@@ -11,6 +11,11 @@ def render(request:Request,key):
     run_id=request.query_params.get('run_id')
     if run_id:
         state=store.get(DB_PATH,run_id)
+        related=store.revisions(DB_PATH,run_id)
+        lineage=store.lineage(DB_PATH,run_id)
     else:
         state=store.save(DB_PATH,evaluate({'dataset':request.query_params.get('dataset','dirty')}))
-    return templates.TemplateResponse(request=request,name=f'{key}.html',context={'meta':META,'key':key,'state':state,'view':state['views'][key]})
+        related=[{'id':state['manifest']['run_id'],'status':state['status'],'formal':state.get('formal',True),
+                  'closed':True,'base_run_id':None,'diff':None,'blockers':[]}]
+        lineage=[]
+    return templates.TemplateResponse(request=request,name=f'{key}.html',context={'meta':META,'key':key,'state':state,'view':state['views'][key],'related':related,'lineage':lineage})

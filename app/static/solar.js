@@ -6,3 +6,42 @@ if(filePicker){
  document.querySelector('#import-csv').addEventListener('click',async event=>{event.target.disabled=true;try{const response=await fetch('/api/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csv_text:editor.value})});const data=await response.json();if(!response.ok)throw Error(data.detail);location.href=location.pathname+'?run_id='+data.manifest.run_id;}catch(e){editor.setCustomValidity(e.message);editor.reportValidity();}finally{event.target.disabled=false;}});
  editor.addEventListener('input',()=>editor.setCustomValidity(''));
 }
+
+// 修订归档：发起更正、发布、回滚。切换失败时回到原批，旧版始终可核验。
+const revisionPanel=document.querySelector('#revision-panel');
+if(revisionPanel){
+ const feedback=document.querySelector('#revision-feedback');
+ const goTo=id=>{location.href='/archive?run_id='+id;};
+ const call=async(url,body)=>{
+   const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+   const data=await response.json();
+   if(!response.ok)throw Error(data.detail||'操作失败');
+   return data;
+ };
+ const form=document.querySelector('#revision-form');
+ if(form){
+   form.addEventListener('submit',async event=>{
+     event.preventDefault();
+     const button=form.querySelector('button');button.disabled=true;feedback.textContent='重算中…';
+     const raw=new FormData(form);const field=raw.get('field');let to=raw.get('to');
+     if(field==='capacity_kw')to=to.trim();
+     if(field==='reference')to=to.trim()==='true';
+     const correction={device:raw.get('device'),field,to,basis:raw.get('basis'),reason:raw.get('reason'),actor:raw.get('actor')};
+     try{const run=await call('/api/runs/'+revisionPanel.dataset.runId+'/revisions',{corrections:[correction]});goTo(run.manifest.run_id);}
+     catch(error){feedback.textContent=error.message;button.disabled=false;}
+   });
+ }
+ const publish=document.querySelector('#publish-revision');
+ if(publish){publish.addEventListener('click',async()=>{
+   publish.disabled=true;feedback.textContent='切换正式版本…';
+   const previous=revisionPanel.dataset.base;
+   try{await call('/api/runs/'+publish.dataset.runId+'/publish');goTo(publish.dataset.runId);}
+   catch(error){feedback.textContent=error.message+'，已保持原版 '+(previous||'可用');publish.disabled=false;}
+ });}
+ const rollback=document.querySelector('#rollback-revision');
+ if(rollback){rollback.addEventListener('click',async()=>{
+   rollback.disabled=true;feedback.textContent='回滚中…';
+   try{const run=await call('/api/runs/'+rollback.dataset.runId+'/rollback');goTo(run.manifest.run_id);}
+   catch(error){feedback.textContent=error.message;rollback.disabled=false;}
+ });}
+}

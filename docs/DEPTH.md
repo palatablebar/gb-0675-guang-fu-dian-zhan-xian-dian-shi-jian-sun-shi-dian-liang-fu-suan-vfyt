@@ -14,6 +14,22 @@
 | M6 能量对账 | 执行并复核能量对账 | `POST /api/reconcile` | `app/modules/reconcile/rules.py` | `tests/test_reconcile.py` |
 | M7 运行归档 | 执行并复核运行归档 | `POST /api/archive` | `app/modules/archive/rules.py` | `tests/test_archive.py` |
 
+## 设备归属更正后的修订归档
+
+台账更正（区域/额定功率/对照资格）会改变基线对照集合，旧批损失必须重算。修订遵循“整批重算最快、未受影响片段保持原值”两条并存的约束，核心实现见 `app/revisions.py`、`app/store.py`。
+
+| 环节 | 规则 | 位置 | 测试 |
+|---|---|---|---|
+| 更正依据 | 设备/字段/原值/新值/依据/原因/经办缺一不可；`from` 与当前台账不符即判陈旧；更正无变化直接拒绝 | `app/revisions.py::prepare` | `tests/test_revision.py::test_stale_from_rejected` 等 |
+| 整批重算 | 基于原批不可变源快照与更正后台账完整复算 | `app/revisions.py::assemble` | `tests/test_revision.py::test_zone_correction_recomputes_only_affected` |
+| 片段回植 | 计算值（基线、损失、码）未变的片段沿用原批原值与原精度；证据字段如实反映更正后台账并标注 | `app/revisions.py::assemble` | `tests/test_revision.py::test_unaffected_segments_keep_original_values` |
+| 差异闭合 | 结构变化、无法解释的变化、已确定变未定、未定增加、总差额不闭合、守恒失败、隔离账变化、更正无效果、原批未达可归档均为阻断项 | `app/revisions.py::assemble` | `tests/test_revision.py::test_known_to_unknown_blocks_closure` |
+| 正式切换 | 仅闭合草案可发布；单事务切换，失败整体回滚 | `app/store.py::publish` | `tests/test_e2e.py::test_revision_not_closed_cannot_publish` |
+| 回滚 | 撤销切换，恢复被替代旧版 | `app/store.py::rollback` | `tests/test_e2e.py::test_revision_publish_and_rollback` |
+| 旧档核验 | 旧正式批不可变，仍可导出原样证据 | `app/archive.py::serialize` | `tests/test_e2e.py::test_revision_bundle_carries_basis_and_diff` |
+
+接口：`POST /api/runs/{run_id}/revisions`、`GET /api/runs/{run_id}/revisions`、`GET /api/runs/{run_id}/lineage`、`POST /api/runs/{run_id}/publish`、`POST /api/runs/{run_id}/rollback`。页面在 `/archive` 展示新旧差异与谱系。
+
 ## 陷阱登记
 
 | TRAP | 现象 | 朴素实现 | 本项目处理 | 处理位置 | 测试 |
